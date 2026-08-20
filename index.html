@@ -354,6 +354,7 @@
 
   let state = {};
   let currentWeek = 1;
+  let authError = null;
   const weekCandidates = {}; // ephemeral, not persisted
   const weekStravaStatus = {}; // ephemeral, not persisted: {text, err}
 
@@ -413,7 +414,9 @@
     document.getElementById('progress-line').textContent = `${doneTotal}/${all} sesiones completadas`;
 
     const stravaLine = document.getElementById('strava-status-line');
-    if(isStravaConnected()){
+    if(authError){
+      stravaLine.innerHTML = `<span style="color:var(--warn)">⚠ ${authError}</span>`;
+    } else if(isStravaConnected()){
       stravaLine.innerHTML = '<span style="color:var(--accent)">● Conectado a Strava</span>';
     } else {
       stravaLine.innerHTML = '<button class="strava-btn small" id="connect-strava-btn">Conectar con Strava</button>';
@@ -504,7 +507,7 @@
     if(!(st.checked && st.source==='strava')){
       const stravaBtn = document.createElement('button');
       stravaBtn.className = 'strava-btn small';
-      stravaBtn.textContent = isStravaConnected() ? 'Comprobar en Strava' : 'Conectar con Strava';
+      stravaBtn.textContent = 'Comprobar en Strava';
       stravaBtn.onclick = ()=> showStravaModal(sess, week);
       foot.appendChild(stravaBtn);
     }
@@ -534,7 +537,7 @@
 
   // ---- Configuración de Strava ----
   // Client ID de tu app de Strava (developer.strava.com) — este SÍ va en el navegador, no es secreto.
-  const STRAVA_CLIENT_ID = '273502';
+  const STRAVA_CLIENT_ID = 'PON_AQUI_TU_CLIENT_ID';
   const STRAVA_TOKEN_KEY = 'strava-tokens'; // {access_token, refresh_token, expires_at}
 
   function getStravaTokens(){
@@ -558,13 +561,21 @@
   async function handleStravaAuthReturn(){
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    const errParam = params.get('error');
+    if(errParam){
+      authError = `Strava devolvió un error: ${errParam}`;
+      window.history.replaceState({}, '', window.location.pathname);
+      return;
+    }
     if(!code) return;
     try{
       const r = await fetch(`/api/strava-token?action=exchange&code=${encodeURIComponent(code)}`);
       const data = await r.json();
-      if(r.ok){ saveStravaTokens(data); }
-    }catch(e){ /* si falla, el usuario puede reintentar conectando de nuevo */ }
-    // limpia el ?code= de la URL sin recargar
+      if(r.ok){ saveStravaTokens(data); authError = null; }
+      else { authError = data.error || `Error ${r.status} al conectar con Strava`; }
+    }catch(e){
+      authError = `Error de red al conectar con Strava: ${e.message}`;
+    }
     window.history.replaceState({}, '', window.location.pathname);
   }
   async function ensureValidAccessToken(){
